@@ -7,11 +7,11 @@ tags: [reversing, linux, anti-debugging]
 
 [See github repo here!](https://github.com/seblau/linux-anti-debugging)
 
-The point here is that debuggers like [gdb](https://www.sourceware.org/gdb/), [edb](https://github.com/eteran/edb-debugger) or strace(1) for example utilize the ptrace(2) function to attach to a process at runtime. But there is only one process allowed to do this at a time and therefore having a call to ptrace(2) in your code can be used to detect debuggers.
+The point here is that debuggers like [gdb](https://www.sourceware.org/gdb/), [edb](https://github.com/eteran/edb-debugger) or `strace(1)` for example utilize the `ptrace(2)` function to attach to a process at runtime. But there is only one process allowed to do this at a time and therefore having a call to `ptrace(2)` in your code can be used to detect debuggers.
 
 First I am going to quickly introduce this anti debugging technique, that uses one call to the `ptrace(2)` syscall. Afterwards I am going to introduce a slightly more advanced version to this method, that is resistent against the most common countermeasures.
 
-## Single PTRACE syscall
+## Calling `ptrace(2)` syscall once
 
 *traceme1.c:*
 {% highlight c %}
@@ -31,7 +31,7 @@ int main()
 }
 {% endhighlight %}
 
-The *traceme1.c* snipped successfully detects any debuggers. For example:
+The *traceme1.c* snippet successfully detects any debuggers. For example:
 {% highlight bash %}
 $ strace ./traceme1.out
 ...
@@ -45,9 +45,9 @@ exit_group(1)                           = ?
 +++ exited with 1 +++
 {% endhighlight %}
 
-To bypass this ptrace anti debugging technique you can to one of the following:
-* patch the call to the ptrace syscall with NOP's
-* overwrite the ptrace function by preloading a custom ELF shared library with LD_PRELOAD, for example:
+To bypass this `ptrace(2)` anti debugging technique you can do one of the following:
+* patch the call to the `ptrace(2)` syscall with NOP's
+* overwrite the `ptrace(2)` function by preloading a custom ELF shared library with `LD_PRELOAD`, for example:
 
 *cptrace.c:*
 {% highlight c %}
@@ -68,7 +68,7 @@ normal execution
 
 In order to be resistent against those bypasses, lets look at a slightly advanced version.
 
-## Double PTRACE syscall
+## Calling `ptrace(2)` syscall *TWICE*
 
 Let us look at the following snippet now.
 
@@ -112,27 +112,19 @@ make traceme2.out
 normal execution
 {% endhighlight %}
 
-But if we try to execute the binary with strace for example, we detect the debugger. This time also the LD_PRELOAD trick does not help us out:
+But if we try to execute the binary with `strace(1)` for example, we detect the debugger. This time also the `LD_PRELOAD` trick does not help us out here:
 
 {% highlight c %}
-make cptrace.so
-export LD_PRELOAD="./cptrace.so"
+> make cptrace.so
+> export LD_PRELOAD="./cptrace.so"
 
-$ strace ./traceme2.out
-...
-ptrace(PTRACE_TRACEME)                  = -1 EPERM (Operation not permitted)
-ptrace(PTRACE_TRACEME)                  = -1 EPERM (Operation not permitted)
-fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 3), ...}) = 0
-brk(NULL)                               = 0x55da90445000
-brk(0x55da90466000)                     = 0x55da90466000
-write(1, "don't trace me !!\n", 18don't trace me !!
-)     = 18
-exit_group(0)                           = ?
-+++ exited with 0 +++
+> strace ./traceme2.out
+> don't trace me !!
+> +++ exited with 0 +++
 {% endhighlight %}
 
 So we would need to add some state to our shared library and return different results based on this state. But that would require some static analysis in the first place, because those ptrace calls could be chained arbitrarily.
 
 Furthermore patching the code with NOP's will not work out of the box either, because the offset calculation must not be destroyed in order to guarantee normal execution.
 
-A sample that I analyzed which used the same anti debugging technique, calculated some offset based on the results off various calls to ptrace(2). This offset was then used as an initialization value for an unpacking function. So neither the LD_PRELOAD trick nor patching the code with NOP's helped me in the first place.
+A sample that I analyzed which used the same anti debugging technique, calculated some offset based on the results off various calls to `ptrace(2)`. This offset was then used as an initialization value for an unpacking function. So neither the `LD_PRELOAD` trick nor patching the code with NOP's helped me in the first place.
