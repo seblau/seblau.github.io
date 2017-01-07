@@ -7,13 +7,23 @@ tags: [reversing, linux, anti-debugging]
 
 [See github repo here!](https://github.com/seblau/linux-anti-debugging)
 
-## Installation
+## Single PTRACE syscall
 
-If you haven't installed the following tools then go ahead and do so (make sure you have [Homebrew](http://brew.sh/) installed):
+{% highlight c %}
+#include <stdio.h>
+#include <sys/ptrace.h>
 
-{% highlight bash %}
-brew install ruby
-brew install npm
+int main()
+{
+    if (ptrace(PTRACE_TRACEME, 0, 1, 0) == -1) 
+    {
+        printf("don't trace me !!\n");
+        return 1;
+    }
+    
+    printf("normal execution\n");
+    return 0;
+}
 {% endhighlight %}
 
 Next setup your environment:
