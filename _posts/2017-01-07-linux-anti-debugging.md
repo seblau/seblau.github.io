@@ -33,6 +33,7 @@ int main()
 
 The *traceme1.c* snippet successfully detects any debuggers. For example:
 {% highlight bash %}
+> make traceme1.out
 > strace ./traceme1.out
 ...
 ptrace(PTRACE_TRACEME)                  = -1 EPERM (Operation not permitted)
