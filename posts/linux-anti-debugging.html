@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="x-ua-compatible" content="ie=edge">
+  <title>Sebastian Auberger's Blog | Linux Anti Debugging</title>
+  <meta name="description" content="With the ptrace syscall it is quite easy to implement some simple linux anti debugging techniques. In this post however we'll cover a slightly advanced usage of the ptrace syscall in order to implement a more resistent anti debugging feature.">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <meta property="og:title" content="Linux Anti Debugging">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="/posts/linux-anti-debugging">
+  <meta property="og:description" content="With the ptrace syscall it is quite easy to implement some simple linux anti debugging techniques. In this post however we'll cover a slightly advanced usage of the ptrace syscall in order to implement a more resistent anti debugging feature.">
+  <meta property="og:site_name" content="Sebastian Auberger's Blog">
+  <meta property="og:image" content="/assets/og-image.jpg">
+
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:url" content="/posts/linux-anti-debugging">
+  <meta name="twitter:title" content="Linux Anti Debugging">
+  <meta name="twitter:description" content="With the ptrace syscall it is quite easy to implement some simple linux anti debugging techniques. In this post however we'll cover a slightly advanced usage of the ptrace syscall in order to implement a more resistent anti debugging feature.">
+  <meta name="twitter:image" content="/assets/og-image.jpg">
+
+  <link rel="apple-touch-icon" href="/assets/apple-touch-icon.png">
+  <link href="/feed.xml" type="application/rss+xml" rel="alternate" title="Sebastian Auberger's Blog Last 10 blog posts" />
+
+  
+    <link type="text/css" rel="stylesheet" href="/assets/light.css">
+  
+</head>
+
+<body>
+  <main role="main">
+    <div class="grid grid-centered">
+      <div class="grid-cell">
+        <nav class="header-nav reveal">
+  <a href="/" class="header-logo" title="Sebastian Auberger's Blog">Sebastian Auberger's Blog</a>
+  <ul class="header-links">
+    
+      <li>
+        <a href="/about" title="About me">
+          <span class="icon icon-android-person"></span>
+        </a>
+      </li>
+    
+    
+      <li>
+        <a href="https://twitter.com/s_auberger" target="_blank" title="Twitter">
+          <span class="icon icon-social-twitter"></span>
+        </a>
+      </li>
+    
+    
+    
+      <li>
+        <a href="https://github.com/seblau" target="_blank" title="GitHub">
+          <span class="icon icon-social-github"></span>
+        </a>
+      </li>
+    
+    
+    
+    
+    
+    
+    
+      <li>
+        <a href="/feed.xml" target="_blank" title="RSS">
+          <span class="icon icon-social-rss"></span>
+        </a>
+      </li>
+    
+  </ul>
+</nav>
+
+        <article class="article reveal">
+          <header class="article-header">
+            <h1>Linux Anti Debugging</h1>
+            <p>With the ptrace syscall it is quite easy to implement some simple linux anti debugging techniques. In this post however we'll cover a slightly advanced usage of the ptrace syscall in order to implement a more resistent anti debugging feature.</p>
+            <div class="article-list-footer">
+              <span class="article-list-date">
+                January 7, 2017
+              </span>
+              <span class="article-list-divider">-</span>
+              <span class="article-list-minutes">
+                
+                
+                  4 minute read
+                
+              </span>
+              <span class="article-list-divider">-</span>
+              <div class="article-list-tags">
+                
+                  <a href="/tag/reversing">reversing</a>
+                
+                  <a href="/tag/linux">linux</a>
+                
+                  <a href="/tag/anti-debugging">anti-debugging</a>
+                
+              </div>
+            </div>
+          </header>
+
+          <div class="article-content">
+            <p><a href="https://github.com/seblau/linux-anti-debugging">See github repo here!</a></p>
+
+<p>The point here is that debuggers like <a href="https://www.sourceware.org/gdb/">gdb</a>, <a href="https://github.com/eteran/edb-debugger">edb</a> or <code class="highlighter-rouge">strace(1)</code> for example utilize the <code class="highlighter-rouge">ptrace(2)</code> function to attach to a process at runtime. But there is only one process allowed to do this at a time and therefore having a call to <code class="highlighter-rouge">ptrace(2)</code> in your code can be used to detect debuggers.</p>
+
+<p>First I am going to quickly introduce this anti debugging technique, that uses one call to the <code class="highlighter-rouge">ptrace(2)</code> syscall. Afterwards I am going to introduce a slightly more advanced version to this method, that is resistent against the most common countermeasures.</p>
+
+<h2 id="calling-ptrace2-once">Calling <code class="highlighter-rouge">ptrace(2)</code> once</h2>
+
+<p><em>traceme1.c:</em></p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;sys/ptrace.h&gt;
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="k">if</span> <span class="p">(</span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_TRACEME</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span> 
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"don't trace me !!</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+        <span class="k">return</span> <span class="mi">1</span><span class="p">;</span>
+    <span class="p">}</span>
+    
+    <span class="n">printf</span><span class="p">(</span><span class="s">"normal execution</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>The <em>traceme1.c</em> snippet successfully detects any debuggers. For example:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="gp">&gt; </span>make traceme1.out
+<span class="gp">&gt; </span>strace ./traceme1.out
+...
+ptrace<span class="o">(</span>PTRACE_TRACEME<span class="o">)</span>                  <span class="o">=</span> -1 EPERM <span class="o">(</span>Operation not permitted<span class="o">)</span>
+fstat<span class="o">(</span>1, <span class="o">{</span><span class="nv">st_mode</span><span class="o">=</span>S_IFCHR|0620, <span class="nv">st_rdev</span><span class="o">=</span>makedev<span class="o">(</span>136, 3<span class="o">)</span>, ...<span class="o">})</span> <span class="o">=</span> 0
+brk<span class="o">(</span>NULL<span class="o">)</span>                               <span class="o">=</span> 0x55ccbe9aa000
+brk<span class="o">(</span>0x55ccbe9cb000<span class="o">)</span>                     <span class="o">=</span> 0x55ccbe9cb000
+write<span class="o">(</span>1, <span class="s2">"don't trace me !!</span><span class="se">\n</span><span class="s2">"</span>, 18don<span class="s1">'t trace me !!
+)     = 18
+exit_group(1)                           = ?
++++ exited with 1 +++</span></code></pre></figure>
+
+<p>To bypass this <code class="highlighter-rouge">ptrace(2)</code> anti debugging technique you can do one of the following:</p>
+<ul>
+  <li>patch the call to the <code class="highlighter-rouge">ptrace(2)</code> syscall with NOP’s</li>
+  <li>overwrite the <code class="highlighter-rouge">ptrace(2)</code> function by preloading a custom ELF shared library with <code class="highlighter-rouge">LD_PRELOAD</code>, for example:</li>
+</ul>
+
+<p><em>cptrace.c:</em></p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="kt">long</span> <span class="nf">ptrace</span><span class="p">(</span><span class="kt">int</span> <span class="n">request</span><span class="p">,</span> <span class="kt">int</span> <span class="n">pid</span><span class="p">,</span> <span class="kt">int</span> <span class="n">addr</span><span class="p">,</span> <span class="kt">int</span> <span class="n">data</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span> </code></pre></figure>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="gp">&gt; </span>make cptrace.so
+<span class="gp">&gt; </span><span class="nb">export </span><span class="nv">LD_PRELOAD</span><span class="o">=</span><span class="s2">"./cptrace.so"</span>
+
+<span class="gp">&gt; </span>strace ./traceme1.out
+<span class="gp">&gt; </span>normal execution
+<span class="gp">&gt; </span>+++ exited with 0 +++</code></pre></figure>
+
+<p>In order to be resistent against those bypasses, lets look at a slightly advanced version.</p>
+
+<h2 id="calling-ptrace2-twice">Calling <code class="highlighter-rouge">ptrace(2)</code> <em>TWICE</em></h2>
+
+<p>Let us look at the following snippet now.</p>
+
+<p><em>traceme2.c:</em></p>
+
+<figure class="highlight"><pre><code class="language-c" data-lang="c"><span class="cp">#include &lt;stdio.h&gt;
+#include &lt;sys/ptrace.h&gt;
+</span>
+<span class="kt">int</span> <span class="nf">main</span><span class="p">()</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">offset</span> <span class="o">=</span> <span class="mi">0</span><span class="p">;</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_TRACEME</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="mi">2</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">ptrace</span><span class="p">(</span><span class="n">PTRACE_TRACEME</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">offset</span> <span class="o">*</span> <span class="mi">3</span><span class="p">;</span>
+    <span class="p">}</span>
+
+    <span class="k">if</span> <span class="p">(</span><span class="n">offset</span> <span class="o">==</span> <span class="mi">2</span> <span class="o">*</span> <span class="mi">3</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"normal execution</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="p">}</span>
+    <span class="k">else</span>
+    <span class="p">{</span>
+        <span class="n">printf</span><span class="p">(</span><span class="s">"don't trace me !!</span><span class="se">\n</span><span class="s">"</span><span class="p">);</span>
+    <span class="p">}</span>
+
+    <span class="k">return</span> <span class="mi">0</span><span class="p">;</span>
+<span class="p">}</span></code></pre></figure>
+
+<p>If we execute the binary without any debugger attached we get the expected behaviour:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="gp">&gt; </span>make traceme2.out
+<span class="gp">&gt; </span>./traceme2.out
+<span class="gp">&gt; </span>normal execution</code></pre></figure>
+
+<p>But if we try to execute the binary with <code class="highlighter-rouge">strace(1)</code> for example, we detect the debugger. This time also the <code class="highlighter-rouge">LD_PRELOAD</code> trick does not help us out here:</p>
+
+<figure class="highlight"><pre><code class="language-bash" data-lang="bash"><span class="gp">&gt; </span>make cptrace.so
+<span class="gp">&gt; </span><span class="nb">export </span><span class="nv">LD_PRELOAD</span><span class="o">=</span><span class="s2">"./cptrace.so"</span>
+
+<span class="gp">&gt; </span>strace ./traceme2.out
+<span class="gp">&gt; </span>don<span class="s1">'t trace me !!
+&gt; +++ exited with 0 +++</span></code></pre></figure>
+
+<p>So we would need to add some state to our shared library and return different results based on this state. But that would require some static analysis in the first place, because those <code class="highlighter-rouge">ptrace(2)</code> calls could be chained arbitrarily.</p>
+
+<p>Furthermore patching the code with NOP’s will not work out of the box either, because the offset calculation must not be destroyed in order to guarantee normal execution.</p>
+
+<p>A sample that I analyzed which used the same anti debugging technique, calculated some offset based on the results off various calls to <code class="highlighter-rouge">ptrace(2)</code>. This offset was then used as an initialization value for an unpacking function. So neither the <code class="highlighter-rouge">LD_PRELOAD</code> trick nor patching the code with NOP’s helped me in the first place.</p>
+
+          </div>
+
+          <div class="article-share">
+            
+            <a href="" title="Share on Twitter" onclick="window.open('https://twitter.com/home?status=Linux Anti Debugging - /posts/linux-anti-debugging by @s_auberger', 'newwindow', 'width=500, height=225'); return false;">
+              <span class="icon icon-social-twitter"></span>
+            </a>
+            <a href="" title="Share on Facebook" onclick="window.open('https://www.facebook.com/sharer/sharer.php?u=/posts/linux-anti-debugging', 'newwindow', 'width=500, height=500'); return false;">
+              <span class="icon icon-social-facebook"></span>
+            </a>
+            <a href="" title="Share on Google+" onclick="window.open('https://plus.google.com/share?url=/posts/linux-anti-debugging', 'newwindow', 'width=550, height=400'); return false;">
+              <span class="icon icon-social-googleplus"></span>
+            </a>
+          </div>
+
+          
+            <div id="disqus_thread" class="article-comments"></div>
+            <script>
+              (function() {
+                  var d = document, s = d.createElement('script');
+                  s.src = '//seblau-github-io.disqus.com/embed.js';
+                  s.setAttribute('data-timestamp', +new Date());
+                  (d.head || d.body).appendChild(s);
+              })();
+            </script>
+            <noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+          
+        </article>
+        <footer class="footer reveal">
+  <p>
+    Copyright <a href="/about" title="About me">Sebastian Auberger</a> 2017
+  </p>
+</footer>
+
+      </div>
+    </div>
+  </main>
+  <script type="text/javascript" src="/assets/vendor.js"></script>
+<script type="text/javascript" src="/assets/application.js"></script>
+
+<script src="https://ajax.googleapis.com/ajax/libs/webfont/1.6.16/webfont.js"></script>
+<script>
+  WebFont.load({
+    google: {
+      families: ['Cormorant Garamond:700', 'Lato:300,400,700']
+    }
+  });
+</script>
+
+
+
+</body>
+</html>
