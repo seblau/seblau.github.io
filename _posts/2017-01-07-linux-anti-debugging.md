@@ -11,7 +11,7 @@ The point here is that debuggers like [gdb](https://www.sourceware.org/gdb/), [e
 
 First I am going to quickly introduce this anti debugging technique, that uses one call to the `ptrace(2)` syscall. Afterwards I am going to introduce a slightly more advanced version to this method, that is resistent against the most common countermeasures.
 
-## Calling `ptrace(2)` syscall once
+## Calling `ptrace(2)` once
 
 *traceme1.c:*
 {% highlight c %}
@@ -33,7 +33,7 @@ int main()
 
 The *traceme1.c* snippet successfully detects any debuggers. For example:
 {% highlight bash %}
-$ strace ./traceme1.out
+> strace ./traceme1.out
 ...
 ptrace(PTRACE_TRACEME)                  = -1 EPERM (Operation not permitted)
 fstat(1, {st_mode=S_IFCHR|0620, st_rdev=makedev(136, 3), ...}) = 0
@@ -58,17 +58,17 @@ long ptrace(int request, int pid, int addr, int data)
 {% endhighlight %}
 
 {% highlight bash %}
-make cptrace.so
-export LD_PRELOAD="./cptrace.so"
+> make cptrace.so
+> export LD_PRELOAD="./cptrace.so"
 
-$ strace ./traceme1.out
-normal execution
-+++ exited with 0 +++
+> strace ./traceme1.out
+> normal execution
+> +++ exited with 0 +++
 {% endhighlight %}
 
 In order to be resistent against those bypasses, lets look at a slightly advanced version.
 
-## Calling `ptrace(2)` syscall *TWICE*
+## Calling `ptrace(2)` *TWICE*
 
 Let us look at the following snippet now.
 
@@ -107,14 +107,14 @@ int main()
 If we execute the binary without any debugger attached we get the expected behaviour:
 
 {% highlight bash %}
-make traceme2.out
-./traceme2.out
-normal execution
+> make traceme2.out
+> ./traceme2.out
+> normal execution
 {% endhighlight %}
 
 But if we try to execute the binary with `strace(1)` for example, we detect the debugger. This time also the `LD_PRELOAD` trick does not help us out here:
 
-{% highlight c %}
+{% highlight bash %}
 > make cptrace.so
 > export LD_PRELOAD="./cptrace.so"
 
@@ -123,7 +123,7 @@ But if we try to execute the binary with `strace(1)` for example, we detect the 
 > +++ exited with 0 +++
 {% endhighlight %}
 
-So we would need to add some state to our shared library and return different results based on this state. But that would require some static analysis in the first place, because those ptrace calls could be chained arbitrarily.
+So we would need to add some state to our shared library and return different results based on this state. But that would require some static analysis in the first place, because those `ptrace(2)` calls could be chained arbitrarily.
 
 Furthermore patching the code with NOP's will not work out of the box either, because the offset calculation must not be destroyed in order to guarantee normal execution.
 
