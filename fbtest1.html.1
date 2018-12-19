@@ -78,11 +78,10 @@
                 var desktopFallback = "https://www.facebook.com/176661456023447",
                 mobileFallback = "https://www.facebook.com/176661456023447",
                 app = "fb://page/176661456023447";
-                window.location.replace(desktopFallback);
-                    /*window.location = app;
+                    window.location = app;
                     window.setTimeout(function() {
                         window.location = mobileFallback;
-                    }, 25);*/
+                    }, 25);
                 function killPopup() {
                     window.removeEventListener('pagehide', killPopup);
                 }
